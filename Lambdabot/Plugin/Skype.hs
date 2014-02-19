@@ -14,6 +14,7 @@ import Lambdabot.Plugin
 import Web.Skype.API
 import Web.Skype.Command.Misc
 import Web.Skype.Core
+import Web.Skype.Parser (parseNotification)
 import Web.Skype.Protocol
 
 import qualified Data.ByteString.Char8 as BC
@@ -64,11 +65,16 @@ getConnection = withMS connector
   where
     connector (Just connection) _ = return connection
     connector Nothing writer = do
-      connection <- liftIO $ connect "lambdabot"
-      runSkype connection $ protocol 9999
-      lift $ lift $ fork $ messageListener connection
+      connection <- newConnection
       writer $ Just connection
       return connection
+
+newConnection :: Cmd (ModuleT (Maybe SkypeConnection) LB) SkypeConnection
+newConnection = do
+  connection <- liftIO $ connect "lambdabot"
+  runSkype connection $ protocol 9999
+  lift $ lift $ fork $ messageListener connection
+  return connection
 
 messageSender :: (MonadSkype (ReaderT connection IO))
               => connection
