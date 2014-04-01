@@ -11,20 +11,20 @@ import Data.List.Split (splitOn)
 import Lambdabot.IRC (IrcMessage(..))
 import Lambdabot.Monad (received, addServer)
 import Lambdabot.Plugin
-import Web.Skype.API
-import Web.Skype.Command.Misc
-import Web.Skype.Core
-import Web.Skype.Parser (parseNotification)
-import Web.Skype.Protocol
+import Network.Skype.API
+import Network.Skype.Command.Misc
+import Network.Skype.Core
+import Network.Skype.Parser (parseNotification)
+import Network.Skype.Protocol
 
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Web.Skype.Command.Chat as Chat
-import qualified Web.Skype.Command.ChatMessage as ChatMessage
-import qualified Web.Skype.Command.User as User
+import qualified Network.Skype.Command.Chat as Chat
+import qualified Network.Skype.Command.ChatMessage as ChatMessage
+import qualified Network.Skype.Command.User as User
 
-skypePlugin :: Module (Maybe SkypeConnection)
+skypePlugin :: Module (Maybe Connection)
 skypePlugin = newModule
   { moduleDefState = return Nothing
   , moduleCmds = return
@@ -39,7 +39,7 @@ skypePlugin = newModule
 skypePlugins :: [String]
 skypePlugins = ["skype"]
 
-skypeCommand :: String -> Cmd (ModuleT (Maybe SkypeConnection) LB) ()
+skypeCommand :: String -> Cmd (ModuleT (Maybe Connection) LB) ()
 skypeCommand args = do
   connection <- getConnection
 
@@ -49,7 +49,7 @@ skypeCommand args = do
 registerChat :: (MonadSkype (ReaderT connection IO))
              => connection
              -> ChatID
-             -> Cmd (ModuleT (Maybe SkypeConnection) LB) ()
+             -> Cmd (ModuleT (Maybe Connection) LB) ()
 registerChat connection chatID = do
   resultForGetTopic <- liftIO $ runSkype connection $ Chat.getTopic chatID
 
@@ -60,7 +60,7 @@ registerChat connection chatID = do
 
     Left _ -> say $ "Failed to add chat: " ++ (BC.unpack chatID)
 
-getConnection :: Cmd (ModuleT (Maybe SkypeConnection) LB) SkypeConnection
+getConnection :: Cmd (ModuleT (Maybe Connection) LB) Connection
 getConnection = withMS connector
   where
     connector (Just connection) _ = return connection
@@ -69,7 +69,7 @@ getConnection = withMS connector
       writer $ Just connection
       return connection
 
-newConnection :: Cmd (ModuleT (Maybe SkypeConnection) LB) SkypeConnection
+newConnection :: Cmd (ModuleT (Maybe Connection) LB) Connection
 newConnection = do
   connection <- liftIO $ connect "lambdabot"
   runSkype connection $ protocol 9999
@@ -96,7 +96,7 @@ messageListener connection =
       notification <- liftIO $ atomically $ readTChan notificationChan
 
       case parseNotification notification of
-        Just (ChatMessage messageID (ChatMessageStatus ChatMessageStatusReceive)) -> do
+        Right (ChatMessage messageID (ChatMessageStatus ChatMessageStatusReceive)) -> do
           result <- liftIO $ runSkype connection $
             (,,,) <$> User.getCurrentUserHandle
                   <*> ChatMessage.getSender messageID
@@ -113,6 +113,6 @@ messageListener connection =
                 , ircMsgParams  = [BC.unpack to, ':' : BC.unpack (T.encodeUtf8 body)]
                 }
             Left _ -> loop notificationChan
-        _ -> loop notificationChan
+        Left _ -> loop notificationChan
 
       loop notificationChan
